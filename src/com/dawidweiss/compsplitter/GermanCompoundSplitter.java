@@ -136,7 +136,7 @@ public class GermanCompoundSplitter
             switch (type)
             {
                 case WORD:
-                    b.append("<" + getPosTag(arc) + ">");
+                    //b.append("<" + getPosTag(arc) + ">");
                     break;
                 case GLUE_MORPHEME:
                     b.append("<G>");
@@ -200,7 +200,7 @@ public class GermanCompoundSplitter
             {
                 String full = UnicodeUtil.newString(path.ints, 0, path.length);
                 String tag = full.substring(full.indexOf('\t') + 1);
-                //completions.add(tag);
+                completions.add(tag);
                 return true;
             }
         });
