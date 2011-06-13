@@ -7,323 +7,278 @@ import java.util.*;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.fst.*;
-import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.INPUT_TYPE;
 
 import com.dawidweiss.compsplitter.tools.InputStreamDataInput;
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
 
 /**
- * Compound splitter for German. 
- * http://german.about.com/library/verbs/blverb_pre01.htm
- * http://www.canoo.net/services/WordformationRules/Komposition/N-Comp/Adj+N/Komp+N.html?MenuId=WordFormation115012
+ * Simple greedy compound splitter for German. Objects of this class are <b>not thread
+ * safe</b> and must not be used concurrently.
  */
 public class GermanCompoundSplitter
 {
-    private final static FST<Object> morphy;
-    private final static FST<Object> morphemes;
+    /*
+     * Ideas for improvement: Strip off affixes?
+     * http://german.about.com/library/verbs/blverb_pre01.htm Use POS tags and
+     * morphological patterns, as described here? This will probably be difficult without
+     * a disambiguation engine in place, otherwise lots of things will match.
+     * http://www.canoo
+     * .net/services/WordformationRules/Komposition/N-Comp/Adj+N/Komp+N.html
+     * ?MenuId=WordFormation115012
+     */
 
+    /**
+     * A static FSA with inflected and base surface forms from Morphy.
+     * 
+     * @see "http://www.wolfganglezius.de/doku.php?id=cl:surfaceForms"
+     */
+    private final static FST<Object> surfaceForms;
+
+    /**
+     * A static FSA with glue glueMorphemes. This could be merged into a single FSA
+     * together with {@link #surfaceForms}, but I leave it separate for now.
+     */
+    private final static FST<Object> glueMorphemes;
+
+    /**
+     * Load and initialize static data structures.
+     */
     static
     {
         try
         {
-            morphy = readMorphyFST();
-            morphemes = createMorphemesFST();
+            surfaceForms = readMorphyFST();
+            glueMorphemes = createMorphemesFST();
         }
         catch (IOException e)
         {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to initialize static data structures.", e);
         }
     }
 
-    public GermanCompoundSplitter()
-    {
-    }
-
-    public static void main(String [] args) throws IOException
-    {
-        GermanCompoundSplitter splitter = new GermanCompoundSplitter();
-        String [] inputs =
-        {
-            "schweinerei", // not: schwein:er:ei
-            "anwendungsprogrammschnittstelle", // "anwendung.s.programm.schnittstelle",
-            "bewegungsachse", // "bewegung.s.achse",
-            "vergewaltigungsopfer", // vergewaltig.ung.opfer
-
-            "Flüchtlings-lager",
-            "Militär-offensive",
-            "Kosten-explosion",
-            "Privat-haushalt",
-            "Infektions-quelle",
-            "Projekt-management",
-            "Lern-effekt", // missing word in the dictionary (?)
-            "Monats-bericht",
-            "Entwicklungs-projekt",
-            "Unternehmens-kultur",
-            "Bevölkerungs-wachstum",
-            "Reichstags-abgeordneter",
-            "Städte-partnerschaft",
-            "Auftrags-eingang",
-
-            "zeitschriften-redaktionen",
-            "Gebrauchtwagen",
-            "Hochbahn",
-            "Gebrauchtwagen",
-            "Höher-versicherung",
-
-            "Sünder-ecke",
-
-            // these seeme to be lexicalized in morphy
-            "Abteil-ende",
-            "Außen-stürmer",
-            "Beileids-karte",
-            "Comic-strip",
-            "Eichen-seide",
-            "Flügel-stürmer",
-            
-            "versandabteilungen",
-            "abteilungsleiterposition",
-            "Ausstrahlungsnotizen",
-            
-            "Stadt-plan-ersatz",
-            "Konsumentenbeschimpfung",
-            "puffer-bau-stein",
-            "gelbrot",
-        };
-
-        for (String s : inputs)
-        {
-            System.out.println("#" + s);
-            s = s.toLowerCase().replace("-", "");
-            splitter.split(s);
-            System.out.println("------");
-        }
-    }
-
-    private static enum ChunkType
+    /**
+     * Category for a given chunk of a compound.
+     */
+    public static enum ChunkType
     {
         GLUE_MORPHEME, WORD,
     }
 
-    private static class Chunk
+    /**
+     * A slice of a compound word.
+     */
+    public final class Chunk
     {
-        int start;
-        int end;
+        public final int start;
+        public final int end;
+        public final ChunkType type;
 
-        ChunkType type;
-        FST.Arc<Object> arc;
-
-        public Chunk(int start, int end, FST.Arc<Object> arc)
+        Chunk(int start, int end, ChunkType type)
         {
             this.start = start;
             this.end = end;
-            this.type = ChunkType.WORD;
-            this.arc = arc;
+            this.type = type;
         }
 
-        public Chunk(int offset, int end)
+        @Override
+        public String toString()
         {
-            this.start = offset;
-            this.end = end;
-            this.type = ChunkType.GLUE_MORPHEME;
-        }
+            final StringBuilder b = new StringBuilder(
+                UnicodeUtil.newString(utf32.ints, start, end - start)).reverse();
 
-        public CharSequence toString(IntsRef codePoints)
-        {
-            StringBuilder b = new StringBuilder(UnicodeUtil.newString(codePoints.ints,
-                start, end - start)).reverse();
-            switch (type)
-            {
-                case WORD:
-                    //b.append("<" + getPosTag(arc) + ">");
-                    break;
-                case GLUE_MORPHEME:
-                    b.append("<G>");
-            }
+            if (type == ChunkType.GLUE_MORPHEME) 
+                b.append("<G>");
+
             return b.toString();
         }
     }
 
-    private static class DecompositionListener
+    /**
+     * A decomposition listener accepts potential decompositions of a word.
+     */
+    public static interface DecompositionListener
     {
-        private IntsRef codePoints;
-
-        public DecompositionListener(IntsRef utf32)
-        {
-            this.codePoints = utf32;
-        }
-
-        public void decomposition(ArrayDeque<Chunk> chunks)
-        {
-            Iterator<Chunk> i = chunks.descendingIterator();
-            while (i.hasNext())
-            {
-                Chunk ch = i.next();
-                System.out.print(ch.toString(codePoints));
-
-                if (i.hasNext()) System.out.print(".");
-            }
-            System.out.println("");
-        }
+        /**
+         * @param utf32 Full unicode points of the input sequence.
+         * @param chunks Chunks with decomposed parts and matching regions.
+         */
+        void decomposition(IntsRef utf32, ArrayDeque<Chunk> chunks);
     }
 
-    private int [] maxPaths;
+    /**
+     * Full unicode points representation of the input compound.
+     */
+    private IntsRef utf32 = new IntsRef(0);
 
-    private String [] split(String word) throws IOException
-    {
-        final IntsRef utf32 = UTF16ToUTF32(word, new IntsRef(0));
-        reverse(utf32);
+    /**
+     * This array stores the minimum number of decomposition words during traversals to
+     * avoid splitting a larger word into smaller chunks.
+     */
+    private IntsRef maxPaths = new IntsRef(0);
 
-        final ArrayDeque<Chunk> stack = new ArrayDeque<Chunk>();
-        final DecompositionListener dl = new DecompositionListener(utf32);
+    /**
+     * Reusable array of decomposition chunks.
+     */
+    private final ArrayDeque<Chunk> chunks = new ArrayDeque<Chunk>();
 
-        maxPaths = new int [utf32.length + 1];
-        Arrays.fill(maxPaths, Integer.MAX_VALUE);
-        matchWord(stack, dl, utf32, utf32.offset);
+    /**
+     * A decomposition listener accepts potential decompositions of a word.
+     */
+    private DecompositionListener listener;
 
-        return null;
-    }
+    /**
+     * String builder for the result of {@link #split(CharSequence)}.
+     */
+    private final StringBuilder builder = new StringBuilder();
 
-    private static interface PathVisitor
-    {
-        public boolean visit(IntsRef path);
-    }
-
-    public static CharSequence getPosTag(Arc<Object> arc)
-    {
-        final List<String> completions = new ArrayList<String>();
-        IntsRef path = new IntsRef(0);
-        visitFinalStatesFrom(path, morphy, arc, new PathVisitor()
-        {
-            public boolean visit(IntsRef path)
-            {
-                String full = UnicodeUtil.newString(path.ints, 0, path.length);
-                String tag = full.substring(full.indexOf('\t') + 1);
-                completions.add(tag);
-                return true;
-            }
-        });
-
-        return Joiner.on("|").join(completions);
-    }
-
-    private static <T> void visitFinalStatesFrom(IntsRef path, FST<T> fst, Arc<T> arc,
-        PathVisitor pathVisitor)
+    /**
+     * Splits the input sequence of characters into separate words if this sequence is
+     * potentially a compound word.
+     * 
+     * @param word The word to be split.
+     * @return Returns <code>null</code> if this word is not recognized at all. Returns a
+     *         character sequence with '.'-delimited compound chunks (if ambiguous
+     *         interpretations are possible, they are separated by a ',' character). The
+     *         returned buffer will change with each call to <code>split</code> so copy the
+     *         content if needed.
+     */
+    public CharSequence split(CharSequence word)
     {
         try
         {
-            FST.Arc<T> scratch = new FST.Arc<T>();
-            fst.readFirstTargetArc(arc, arc);
-            while (true)
+            this.builder.setLength(0);
+            this.utf32 = reverse(UTF16ToUTF32(word, utf32));
+
+            this.listener = new DecompositionListener()
             {
-                if (arc.label == FST.END_LABEL) {
-                    pathVisitor.visit(path);
-                } else {
-                    final int save = path.length;
+                public void decomposition(IntsRef utf32, ArrayDeque<Chunk> chunks)
+                {
+                    if (builder.length() > 0)
+                        builder.append(",");
 
-                    path.grow(path.length + 1);
-                    path.ints[save] = arc.label;
-                    path.length++;
-                    visitFinalStatesFrom(path, fst, scratch.copyFrom(arc), pathVisitor);
-                    path.length = save;
+                    boolean first = true;
+                    Iterator<Chunk> i = chunks.descendingIterator();
+                    while (i.hasNext())
+                    {
+                        Chunk chunk = i.next();
+                        if (chunk.type == ChunkType.WORD)
+                        {
+                            if (!first) builder.append('.');
+                            first = false;
+                            builder.append(chunk.toString());
+                        }
+                    }
                 }
+            };
 
-                if (arc.isLast()) 
-                    break;
-                fst.readNextArc(arc);
-            }
+            maxPaths.grow(utf32.length + 1);
+            Arrays.fill(maxPaths.ints, 0, utf32.length + 1, Integer.MAX_VALUE);
+            matchWord(utf32, utf32.offset);
+
+            return builder.length() == 0 ? null : builder;
         }
         catch (IOException e)
         {
+            // Shouldn't happen, but just in case.
             throw new RuntimeException(e);
         }
     }
 
-    private void matchWord(ArrayDeque<Chunk> stack, DecompositionListener dl,
-        IntsRef utf32, int offset) throws IOException
+    /**
+     * Consume a word, then recurse into glue morphemes/ further words.
+     */
+    private void matchWord(IntsRef utf32, int offset) throws IOException
     {
-        FST.Arc<Object> arc = morphy.getFirstArc(new FST.Arc<Object>());
+        FST.Arc<Object> arc = surfaceForms.getFirstArc(new FST.Arc<Object>());
         FST.Arc<Object> scratch = new FST.Arc<Object>();
-        List<Chunk> wordsFromHere = Lists.newArrayList();
+        List<Chunk> wordsFromHere = new ArrayList<Chunk>();
 
         for (int i = offset; i < utf32.length; i++)
         {
             int chr = utf32.ints[i];
 
-            arc = morphy.findTargetArc(chr, arc, arc);
+            arc = surfaceForms.findTargetArc(chr, arc, arc);
             if (arc == null) break;
 
-            if (morphy.findTargetArc('\t', arc, scratch) != null)
+            if (surfaceForms.findTargetArc('\t', arc, scratch) != null)
             {
-                Chunk ch = new Chunk(offset, i + 1, new Arc<Object>().copyFrom(scratch));
+                Chunk ch = new Chunk(offset, i + 1, ChunkType.WORD);
                 wordsFromHere.add(ch);
             }
         }
 
+        int [] maxPaths = this.maxPaths.ints;
         for (int j = wordsFromHere.size(); --j >= 0;)
         {
-            Chunk ch = wordsFromHere.get(j);
+            final Chunk ch = wordsFromHere.get(j);
 
-            if (stack.size() + 1 > maxPaths[ch.end])
-                continue;
-            maxPaths[ch.end] = stack.size() + 1;
+            if (chunks.size() + 1 > maxPaths[ch.end]) continue;
+            maxPaths[ch.end] = chunks.size() + 1;
 
-            stack.addLast(ch);
+            chunks.addLast(ch);
             if (ch.end == utf32.offset + utf32.length)
             {
-                dl.decomposition(stack);
+                listener.decomposition(this.utf32, chunks);
             }
             else
             {
                 // no glue.
-                matchWord(stack, dl, utf32, ch.end);
+                matchWord(utf32, ch.end);
                 // with glue.
-                matchGlueMorpheme(stack, dl, utf32, ch.end);
+                matchGlueMorpheme(utf32, ch.end);
             }
-            stack.removeLast();
+            chunks.removeLast();
         }
     }
 
-    private void matchGlueMorpheme(ArrayDeque<Chunk> stack, DecompositionListener dl,
-        IntsRef utf32, final int offset) throws IOException
+    /**
+     * Consume a maximal glue morpheme, if any, and consume the next word.
+     */
+    private void matchGlueMorpheme(IntsRef utf32, final int offset) throws IOException
     {
-        FST.Arc<Object> arc = morphemes.getFirstArc(new FST.Arc<Object>());
+        FST.Arc<Object> arc = glueMorphemes.getFirstArc(new FST.Arc<Object>());
 
         for (int i = offset; i < utf32.length; i++)
         {
             int chr = utf32.ints[i];
 
-            arc = morphemes.findTargetArc(chr, arc, arc);
+            arc = glueMorphemes.findTargetArc(chr, arc, arc);
             if (arc == null) break;
 
             if (arc.isFinal())
             {
-                Chunk ch = new Chunk(offset, i + 1);
-                stack.addLast(ch);
+                Chunk ch = new Chunk(offset, i + 1, ChunkType.GLUE_MORPHEME);
+                chunks.addLast(ch);
                 if (i + 1 < utf32.offset + utf32.length)
                 {
-                    matchWord(stack, dl, utf32, i + 1);
+                    matchWord(utf32, i + 1);
                 }
-                stack.removeLast();
+                chunks.removeLast();
             }
         }
     }
 
-    private void reverse(IntsRef utf32)
+    /**
+     * Reverse {@link IntsRef} in place.
+     */
+    private static IntsRef reverse(IntsRef ref)
     {
-        int l = 0, r = utf32.length - 1;
+        int l = 0, r = ref.length - 1;
         while (l < r)
         {
-            int tmp = utf32.ints[l];
-            utf32.ints[l] = utf32.ints[r];
-            utf32.ints[r] = tmp;
+            int tmp = ref.ints[l];
+            ref.ints[l] = ref.ints[r];
+            ref.ints[r] = tmp;
             l++;
             r--;
         }
+        return ref;
     }
 
-    private IntsRef UTF16ToUTF32(CharSequence s, IntsRef scratchIntsRef)
+    /**
+     * Convert a character sequence <code>s</code> into full unicode codepoints.
+     */
+    private static IntsRef UTF16ToUTF32(CharSequence s, IntsRef scratchIntsRef)
     {
         int charIdx = 0;
         int intIdx = 0;
@@ -341,7 +296,7 @@ public class GermanCompoundSplitter
     }
 
     /**
-     * Load morphy FST.
+     * Load surface forms FST.
      */
     private static FST<Object> readMorphyFST()
     {
@@ -360,6 +315,9 @@ public class GermanCompoundSplitter
         }
     }
 
+    /**
+     * Create glue morphemes FST.
+     */
     private static FST<Object> createMorphemesFST() throws IOException
     {
         String [] morphemes =
@@ -374,6 +332,7 @@ public class GermanCompoundSplitter
         }
         Arrays.sort(morphemes);
 
+        // Build FST.
         final Builder<Object> builder = new Builder<Object>(INPUT_TYPE.BYTE4,
             NoOutputs.getSingleton());
         final Object nothing = NoOutputs.getSingleton().getNoOutput();
