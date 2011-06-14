@@ -15,6 +15,16 @@ bausteinen baustein ?
 bausteine baustein ?
 bausteins baustein ?
 bausteines baustein ?
+methodologische methodologische ?
+methodologischen methodologische ?
+hain hain ?
+hainen hainen ?
+atom atom ?
+
+# 3-letter things that may make sense.
+
+rot rot ?
+gel gel ?
 
 # Imported from languagetool (Daniel)
 

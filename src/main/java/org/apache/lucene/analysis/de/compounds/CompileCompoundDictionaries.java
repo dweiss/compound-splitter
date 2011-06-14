@@ -74,11 +74,9 @@ public class CompileCompoundDictionaries
             System.out.println(String.format("%s, words: %d", args[i], count));
         }
 
-
         final BytesRef [] all = new BytesRef [words.size()];
         words.toArray(all);
 
-        // left to right.
         Arrays.sort(all, BytesRef.getUTF8SortedAsUnicodeComparator());
         serialize("src/main/resources/words.fst", all);
     }

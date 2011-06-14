@@ -55,6 +55,6 @@ public class GermanCompoundSplitterTest
     public void checkCompound(String compound, String splits)
     {
         CharSequence split = splitter.split(compound);
-        Assert.assertEquals(split == null ? null : split.toString(), splits);
+        Assert.assertEquals(split == null ? compound : split.toString(), splits);
     }
 }
