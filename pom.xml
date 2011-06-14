@@ -25,15 +25,52 @@
       <systemPath>${basedir}/lib/lucene-core-4.0-SNAPSHOT.jar</systemPath>
     </dependency>
     <dependency>
-    	<groupId>org.testng</groupId>
-    	<artifactId>testng</artifactId>
-    	<version>6.0.1</version>
-    	<type>jar</type>
-    	<scope>test</scope>
+      <groupId>org.testng</groupId>
+      <artifactId>testng</artifactId>
+      <version>6.0.1</version>
+      <type>jar</type>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
   <build>
     <defaultGoal>test</defaultGoal>
   </build>
+
+  <profiles>
+    <profile>
+      <id>fst</id>
+
+      <properties>
+        <skipTests>true</skipTests>
+      </properties>
+
+      <build>
+        <defaultGoal>prepare-package</defaultGoal>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>1.2</version>
+            <executions>
+              <execution>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>java</goal>
+                </goals>
+                <configuration>
+                  <mainClass>org.apache.lucene.analysis.de.compounds.CompileCompoundDictionaries</mainClass>
+                  <arguments>
+                    <argument>src/data/morphy-unknown.txt</argument>
+                    <argument>src/data/morphy.txt</argument>
+                  </arguments>
+                  <classpathScope>compile</classpathScope>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -1,0 +1,71 @@
+
+GERMAN COMPOUND SPLITTER
+========================
+
+Based on a greedy "detach word-by-word" heuristic.
+
+
+PLEASE HELP WITH TEST CASES 
+===========================
+
+They're much appreciated and needed. A list of test splits is in:
+
+src/test/resources/test-compounds.utf8
+
+It is a plain text file with a single compound on each line. For example:
+
+lerneffekt lern.effekt
+
+means "lerneffekt" should be split into "lern" and "effekt". Whenever there are glue
+morphemes, they are omitted in the split hint, as in here:
+
+anwendungsprogrammschnittstelle anwendung.programm.schnittstelle
+
+If there are more than one possible splits (ambiguity), they are comma-separated as in:
+
+sünderecke sünde.recke,sünder.ecke 
+
+Add as many test cases as you want. Run them with:
+
+mvn test
+
+This launches a TestNG data-driven test suite.  
+
+
+COMPILING DICTIONARIES
+======================
+
+A finite state automaton is created from:
+
+src/data/morphy.txt           (surface lemma POS_TAG)
+src/data/morphy-unknown.txt   (surface lemma POS_TAG)
+
+You can add new words to morphy-unknown.txt and recompile the automaton with:
+
+mvn -Pfst
+
+The result is in src/main/resources/words.fst. You'll need to refresh your IDE to pick up
+the changes.
+
+
+TODO: PREFIXES
+==============
+
+We need to think if "fixed" prefixes are indeed useful and should be detached/ removed
+in the initial stages of processing. Daniel came up with a list that I stored here:
+
+src/data/compound-prefixes.txt
+
+It is temporarily not used because I've tried this, for example:
+
+$ grep -i "^abbrenn" ./consolidated.bycount
+abbrennen   4063
+abbrennt    713
+abbrennens  131
+abbrennenden    80
+abbrennende 62
+abbrennung  56
+abbrenne    45
+
+this is Google 1-gram corpus from 1980-200(7?) and it is clear that this prefix is not a compound
+forming one at all. 

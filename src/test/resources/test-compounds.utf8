@@ -1,9 +1,55 @@
+
+# ================================================================================================
+# Test case format:
 # compound  spl.it,spli.t,sp.lit,...
+# ================================================================================================
 
 schweinerei schweinerei
 bewegungsachse bewegung.achse
 vergewaltigungsopfer vergewaltigung.opfer
+Flüchtlingslager flüchtlings.lager
+Militäroffensive militär.offensive
+kostenexplosion kosten.explosion
+privathaushalt privat.haushalt
+infektionsquelle infektion.quelle
+projektmanagement projekt.management
+monatsbericht monats.bericht
+entwicklungsprojekt entwicklung.projekt
+städtepartnerschaft städte.partnerschaft
+höherversicherung höher.versicherung
 
-# These currently don't pass the tests.
+# ================================================================================================
+# More than one possible split.
 
+sünderecke sünde.recke,sünder.ecke
+stadtplanersatz stadt.plan.ersatz,stadt.planer.satz
+
+# ================================================================================================
+# These rely on manually-added words
+
+benutzerschnittstelle benutzer.schnittstelle
 anwendungsprogrammschnittstelle anwendung.programm.schnittstelle
+lerneffekt lern.effekt
+lernten lernten
+pufferbaustein puffer.baustein
+
+# ================================================================================================
+# These currently pass the tests, but should not?
+
+hochbahn hochbahn  # hoch.bahn?
+gebrauchtwagen gebrauchtwagen    # gebraucht.wagen?
+abteilende abteilende # abteil.ende?
+
+
+# ================================================================================================
+# And these are possible mistakes/ dubious stuff
+
+lernprozeß lernprozeß # lexicalized (?)
+
+# glue morpheme consumed as part of inflected surface form.
+# should it be reichstag.abgeordneter instead? One can use lemmatizer later on to get
+# lemmas too... so this could be probably worked around.
+reichstagsabgeordneter reichstags.abgeordneter  
+auftragseingang auftrags.eingang
+
+gelbrot gel.brot,gelb.rot # gel.brot doesn't exist in 2-grams from google. ever.
