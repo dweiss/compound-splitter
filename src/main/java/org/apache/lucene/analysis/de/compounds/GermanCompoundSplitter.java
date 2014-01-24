@@ -2,15 +2,13 @@ package org.apache.lucene.analysis.de.compounds;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.FileInputStream;
 import java.util.*;
 
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.fst.*;
 import org.apache.lucene.util.fst.FST.INPUT_TYPE;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
 
 /**
  * Simple greedy compound splitter for German. Objects of this class are <b>not thread
@@ -28,20 +26,18 @@ public class GermanCompoundSplitter
      * ?MenuId=WordFormation115012
      */
 
-    private static Logger log = LoggerFactory
-            .getLogger(GermanCompoundSplitter.class);
     /**
      * A static FSA with inflected and base surface forms from Morphy.
      * 
      * @see "http://www.wolfganglezius.de/doku.php?id=cl:surfaceForms"
      */
-    private static FST<Object> surfaceForms;
+    private final static FST<Object> surfaceForms;
 
     /**
      * A static FSA with glue glueMorphemes. This could be merged into a single FSA
      * together with {@link #surfaceForms}, but I leave it separate for now.
      */
-    private static FST<Object> glueMorphemes;
+    private final static FST<Object> glueMorphemes;
 
     /**
      * left-to-right word encoding symbol (FST).
@@ -53,7 +49,21 @@ public class GermanCompoundSplitter
      */
     static final char RTL_SYMBOL = '<';
 
-
+    /**
+     * Load and initialize static data structures.
+     */
+    static
+    {
+        try
+        {
+            surfaceForms = readMorphyFST();
+            glueMorphemes = createMorphemesFST();
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException("Failed to initialize static data structures.", e);
+        }
+    }
 
     /**
      * Category for a given chunk of a compound.
@@ -130,25 +140,6 @@ public class GermanCompoundSplitter
      */
     private final StringBuilder builder = new StringBuilder();
 
-
-    /**
-     * Load and initialize static data structures.
-     */
-    public static void initFSTs(String fstFile)
-    {
-        try
-        {
-            surfaceForms = readMorphyFST(fstFile);
-            glueMorphemes = createMorphemesFST();
-        }
-        catch (IOException e)
-        {
-            log.error(e.getMessage()
-                    + "    Failed to initialize static data structures for German compound splitter.");
-        }
-    }
-
-
     /**
      * Splits the input sequence of characters into separate words if this sequence is
      * potentially a compound word.
@@ -204,8 +195,7 @@ public class GermanCompoundSplitter
         catch (IOException e)
         {
             // Shouldn't happen, but just in case.
-            log.error(e.getMessage());
-            return null;
+            throw new RuntimeException(e);
         }
     }
 
@@ -222,12 +212,10 @@ public class GermanCompoundSplitter
         {
             int chr = utf32.ints[i];
 
-            arc = surfaceForms.findTargetArc(chr, arc, arc,
-                    surfaceForms.getBytesReader());
+            arc = surfaceForms.findTargetArc(chr, arc, arc);
             if (arc == null) break;
 
-            if (surfaceForms.findTargetArc(RTL_SYMBOL, arc, scratch,
-                    surfaceForms.getBytesReader()) != null)
+            if (surfaceForms.findTargetArc(RTL_SYMBOL, arc, scratch) != null)
             {
                 Chunk ch = new Chunk(offset, i + 1, ChunkType.WORD);
                 wordsFromHere.add(ch);
@@ -269,8 +257,7 @@ public class GermanCompoundSplitter
         {
             int chr = utf32.ints[i];
 
-            arc = glueMorphemes.findTargetArc(chr, arc, arc,
-                    glueMorphemes.getBytesReader());
+            arc = glueMorphemes.findTargetArc(chr, arc, arc);
             if (arc == null) break;
 
             if (arc.isFinal())
@@ -309,13 +296,21 @@ public class GermanCompoundSplitter
     /**
      * Load surface forms FST.
      */
-    private static FST<Object> readMorphyFST(String fstFile) throws IOException
+    private static FST<Object> readMorphyFST()
     {
-        final InputStream is = new FileInputStream(fstFile);
-        final FST<Object> fst = new FST<Object>(new InputStreamDataInput(is),
+        try
+        {
+            final InputStream is = 
+                GermanCompoundSplitter.class.getClassLoader().getResourceAsStream("words.fst");
+            final FST<Object> fst = new FST<Object>(new InputStreamDataInput(is),
                 NoOutputs.getSingleton());
-        is.close();
-        return fst;
+            is.close();
+            return fst;
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
@@ -323,7 +318,7 @@ public class GermanCompoundSplitter
      */
     private static FST<Object> createMorphemesFST() throws IOException
     {
-        String[] morphemes =
+        String [] morphemes =
         {
             "e", "es", "en", "er", "n", "ens", "ns", "s"
         };
@@ -339,18 +334,10 @@ public class GermanCompoundSplitter
         final Builder<Object> builder = new Builder<Object>(INPUT_TYPE.BYTE4,
             NoOutputs.getSingleton());
         final Object nothing = NoOutputs.getSingleton().getNoOutput();
-
         for (String morpheme : morphemes)
         {
-            int[] morphemeCodePoints = new int[morpheme.length()];
-            for (int i = 0; i < morpheme.length(); i++)
-            {
-                morphemeCodePoints[i] = morpheme.codePointAt(i);
-            }
-            builder.add(new IntsRef(morphemeCodePoints, 0, morpheme.length()),
-                    nothing);
+            builder.add(morpheme, nothing);
         }
         return builder.finish();
     }
 }
-

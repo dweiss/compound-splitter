@@ -16,8 +16,6 @@ import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.INPUT_TYPE;
 import org.apache.lucene.util.fst.NoOutputs;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -25,24 +23,20 @@ import org.slf4j.LoggerFactory;
  */
 public class CompileCompoundDictionaries
 {
-  private static Logger log = LoggerFactory
-      .getLogger(CompileCompoundDictionaries.class);
-  private static String dataDir;
-  
-  public static void setDataDir(String dir) {
-    dataDir = dir;
-  }
-
-  public static void compile(String[] vocabFiles)
-      throws Exception
+    public static void main(String [] args) throws Exception
     {
+        if (args.length < 1)
+        {
+            System.out.println("Args: input1.txt input2.txt ...");
+            System.exit(-1);
+        }
 
         final HashSet<BytesRef> words = new HashSet<BytesRef>();
-    for (int i = 0; i < vocabFiles.length; i++)
+        for (int i = 0; i < args.length; i++)
         {
             int count = 0;
             BufferedReader reader = new BufferedReader(new InputStreamReader(
-          new FileInputStream(vocabFiles[i]), "UTF-8"));
+                new FileInputStream(args[i]), "UTF-8"));
 
             Pattern pattern = Pattern.compile("\\s+");
             String line, last = null;
@@ -73,20 +67,18 @@ public class CompileCompoundDictionaries
                 buffer.setLength(len);
                 buffer.reverse().append(GermanCompoundSplitter.RTL_SYMBOL);
                 words.add(new BytesRef(buffer));
-        if ((++count % 100000) == 0) log.info("Line: " + count);
+                if ((++count % 100000) == 0) System.err.println("Line: " + count);
             }
             reader.close();
 
-      log.info("{}, words: {}", vocabFiles[i], count);
+            System.out.println(String.format("%s, words: %d", args[i], count));
         }
 
         final BytesRef [] all = new BytesRef [words.size()];
         words.toArray(all);
 
         Arrays.sort(all, BytesRef.getUTF8SortedAsUnicodeComparator());
-    serialize(
-dataDir + "words.fst",
-        all);
+        serialize("src/main/resources/words.fst", all);
     }
 
     private static void serialize(String file, BytesRef [] all) throws IOException
