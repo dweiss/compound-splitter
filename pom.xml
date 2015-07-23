@@ -19,10 +19,7 @@
     <dependency>
       <groupId>org.apache.lucene</groupId>
       <artifactId>lucene-core</artifactId>
-      <version>4.0-SNAPSHOT</version>
-      <type>jar</type>
-      <scope>system</scope>
-      <systemPath>${basedir}/lib/lucene-core-4.0-SNAPSHOT.jar</systemPath>
+      <version>4.1.0</version>
     </dependency>
     <dependency>
       <groupId>org.testng</groupId>
