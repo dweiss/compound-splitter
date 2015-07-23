@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.fst.*;
@@ -123,7 +124,7 @@ public class GermanCompoundSplitter
      * This array stores the minimum number of decomposition words during traversals to
      * avoid splitting a larger word into smaller chunks.
      */
-    private IntsRef maxPaths = new IntsRef(0);
+    private int[] maxPaths = new int[0];
 
     /**
      * Reusable array of decomposition chunks.
@@ -186,8 +187,8 @@ public class GermanCompoundSplitter
                 }
             };
 
-            maxPaths.grow(utf32.length + 1);
-            Arrays.fill(maxPaths.ints, 0, utf32.length + 1, Integer.MAX_VALUE);
+            maxPaths = ArrayUtil.grow(maxPaths, utf32.length + 1);
+            Arrays.fill(maxPaths, 0, maxPaths.length, Integer.MAX_VALUE);
             matchWord(utf32, utf32.offset);
 
             return builder.length() == 0 ? null : builder;
@@ -212,17 +213,16 @@ public class GermanCompoundSplitter
         {
             int chr = utf32.ints[i];
 
-            arc = surfaceForms.findTargetArc(chr, arc, arc);
+            arc = surfaceForms.findTargetArc(chr, arc, arc, surfaceForms.getBytesReader());
             if (arc == null) break;
 
-            if (surfaceForms.findTargetArc(RTL_SYMBOL, arc, scratch) != null)
+            if (surfaceForms.findTargetArc(RTL_SYMBOL, arc, scratch, surfaceForms.getBytesReader()) != null)
             {
                 Chunk ch = new Chunk(offset, i + 1, ChunkType.WORD);
                 wordsFromHere.add(ch);
             }
         }
 
-        int [] maxPaths = this.maxPaths.ints;
         for (int j = wordsFromHere.size(); --j >= 0;)
         {
             final Chunk ch = wordsFromHere.get(j);
@@ -257,7 +257,7 @@ public class GermanCompoundSplitter
         {
             int chr = utf32.ints[i];
 
-            arc = glueMorphemes.findTargetArc(chr, arc, arc);
+            arc = glueMorphemes.findTargetArc(chr, arc, arc, glueMorphemes.getBytesReader());
             if (arc == null) break;
 
             if (arc.isFinal())
@@ -276,14 +276,14 @@ public class GermanCompoundSplitter
     /**
      * Convert a character sequence <code>s</code> into full unicode codepoints.
      */
-    private static IntsRef UTF16ToUTF32(CharSequence s, IntsRef scratchIntsRef)
+    static IntsRef UTF16ToUTF32(CharSequence s, IntsRef scratchIntsRef)
     {
         int charIdx = 0;
         int intIdx = 0;
         final int charLimit = s.length();
         while (charIdx < charLimit)
         {
-            scratchIntsRef.grow(intIdx + 1);
+            scratchIntsRef.ints = ArrayUtil.grow(scratchIntsRef.ints, intIdx + 1);
             final int utf32 = Character.codePointAt(s, charIdx);
             scratchIntsRef.ints[intIdx] = utf32;
             charIdx += Character.charCount(utf32);
@@ -336,7 +336,7 @@ public class GermanCompoundSplitter
         final Object nothing = NoOutputs.getSingleton().getNoOutput();
         for (String morpheme : morphemes)
         {
-            builder.add(morpheme, nothing);
+            builder.add(UTF16ToUTF32(morpheme, new IntsRef()), nothing);
         }
         return builder.finish();
     }

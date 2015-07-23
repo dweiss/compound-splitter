@@ -89,7 +89,7 @@ public class CompileCompoundDictionaries
         final IntsRef intsRef = new IntsRef(0);
         for (BytesRef br : all)
         {
-            UnicodeUtil.UTF8toUTF32(br, intsRef);
+            GermanCompoundSplitter.UTF16ToUTF32(new String(br.bytes, "UTF-8"), intsRef);
             builder.add(intsRef, nothing);
         }
         final FST<Object> fst = builder.finish();
