@@ -4,11 +4,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 
+import org.apache.lucene.store.InputStreamDataInput;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.fst.*;
+import org.apache.lucene.util.fst.FST.BytesReader;
 import org.apache.lucene.util.fst.FST.INPUT_TYPE;
-
 
 /**
  * Simple greedy compound splitter for German. Objects of this class are <b>not thread
@@ -208,14 +211,15 @@ public class GermanCompoundSplitter
         FST.Arc<Object> scratch = new FST.Arc<Object>();
         List<Chunk> wordsFromHere = new ArrayList<Chunk>();
 
+        BytesReader br = surfaceForms.getBytesReader();
         for (int i = offset; i < utf32.length; i++)
         {
             int chr = utf32.ints[i];
 
-            arc = surfaceForms.findTargetArc(chr, arc, arc);
+            arc = surfaceForms.findTargetArc(chr, arc, arc, br);
             if (arc == null) break;
 
-            if (surfaceForms.findTargetArc(RTL_SYMBOL, arc, scratch) != null)
+            if (surfaceForms.findTargetArc(RTL_SYMBOL, arc, scratch, br) != null)
             {
                 Chunk ch = new Chunk(offset, i + 1, ChunkType.WORD);
                 wordsFromHere.add(ch);
@@ -252,12 +256,12 @@ public class GermanCompoundSplitter
     private void matchGlueMorpheme(IntsRef utf32, final int offset) throws IOException
     {
         FST.Arc<Object> arc = glueMorphemes.getFirstArc(new FST.Arc<Object>());
-
+        BytesReader br = glueMorphemes.getBytesReader();
         for (int i = offset; i < utf32.length; i++)
         {
             int chr = utf32.ints[i];
 
-            arc = glueMorphemes.findTargetArc(chr, arc, arc);
+            arc = glueMorphemes.findTargetArc(chr, arc, arc, br);
             if (arc == null) break;
 
             if (arc.isFinal())
@@ -302,8 +306,7 @@ public class GermanCompoundSplitter
         {
             final InputStream is = 
                 GermanCompoundSplitter.class.getClassLoader().getResourceAsStream("words.fst");
-            final FST<Object> fst = new FST<Object>(new InputStreamDataInput(is),
-                NoOutputs.getSingleton());
+            final FST<Object> fst = new FST<Object>(new InputStreamDataInput(is), NoOutputs.getSingleton());
             is.close();
             return fst;
         }
@@ -334,9 +337,12 @@ public class GermanCompoundSplitter
         final Builder<Object> builder = new Builder<Object>(INPUT_TYPE.BYTE4,
             NoOutputs.getSingleton());
         final Object nothing = NoOutputs.getSingleton().getNoOutput();
+        IntsRefBuilder intsRef = new IntsRefBuilder();
         for (String morpheme : morphemes)
         {
-            builder.add(morpheme, nothing);
+            intsRef.clear();
+            intsRef.copyUTF8Bytes(new BytesRef(morpheme.getBytes("UTF-8")));
+            builder.add(intsRef.get(), nothing);
         }
         return builder.finish();
     }

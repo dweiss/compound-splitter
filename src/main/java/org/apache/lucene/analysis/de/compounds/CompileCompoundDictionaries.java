@@ -9,9 +9,9 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.regex.Pattern;
 
+import org.apache.lucene.store.OutputStreamDataOutput;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IntsRef;
-import org.apache.lucene.util.UnicodeUtil;
+import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.INPUT_TYPE;
@@ -84,18 +84,17 @@ public class CompileCompoundDictionaries
     private static void serialize(String file, BytesRef [] all) throws IOException
     {
         final Object nothing = NoOutputs.getSingleton().getNoOutput();
-        final Builder<Object> builder = new Builder<Object>(INPUT_TYPE.BYTE4,
-            NoOutputs.getSingleton());
-        final IntsRef intsRef = new IntsRef(0);
+        final Builder<Object> builder = new Builder<Object>(INPUT_TYPE.BYTE4, NoOutputs.getSingleton());
+        final IntsRefBuilder intsRef = new IntsRefBuilder();
         for (BytesRef br : all)
         {
-            UnicodeUtil.UTF8toUTF32(br, intsRef);
-            builder.add(intsRef, nothing);
+            intsRef.clear();
+            intsRef.copyUTF8Bytes(br);
+            builder.add(intsRef.get(), nothing);
         }
         final FST<Object> fst = builder.finish();
 
-        final OutputStreamDataOutput out = new OutputStreamDataOutput(
-            new FileOutputStream(file));
+        final OutputStreamDataOutput out = new OutputStreamDataOutput(new FileOutputStream(file));
         fst.save(out);
         out.close();
     }
