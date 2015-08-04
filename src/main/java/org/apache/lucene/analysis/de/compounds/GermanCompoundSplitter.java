@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.util.*;
 
 import org.apache.lucene.store.InputStreamDataInput;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.UnicodeUtil;
@@ -21,12 +20,13 @@ public class GermanCompoundSplitter
 {
     /*
      * Ideas for improvement: Strip off affixes?
-     * http://german.about.com/library/verbs/blverb_pre01.htm Use POS tags and
-     * morphological patterns, as described here? This will probably be difficult without
-     * a disambiguation engine in place, otherwise lots of things will match.
-     * http://www.canoo
-     * .net/services/WordformationRules/Komposition/N-Comp/Adj+N/Komp+N.html
-     * ?MenuId=WordFormation115012
+     * http://german.about.com/library/verbs/blverb_pre01.htm 
+     * 
+     * Use POS tags and morphological patterns, as described here? This will probably 
+     * be difficult without a disambiguation engine in place, otherwise lots of things 
+     * will match. 
+     * 
+     * http://www.canoo.net/services/WordformationRules/Komposition/N-Comp/Adj+N/Komp+N.html?MenuId=WordFormation115012
      */
 
     /**
@@ -121,6 +121,7 @@ public class GermanCompoundSplitter
      * Full unicode points representation of the input compound.
      */
     private IntsRef utf32 = new IntsRef(0);
+    private IntsRefBuilder utf32Builder = new IntsRefBuilder();
 
     /**
      * This array stores the minimum number of decomposition words during traversals to
@@ -164,7 +165,7 @@ public class GermanCompoundSplitter
             this.builder.reverse();
             for (int i = builder.length(); --i > 0;)
                 builder.setCharAt(i, Character.toLowerCase(builder.charAt(i)));
-            this.utf32 = UTF16ToUTF32(builder, utf32);
+            this.utf32 = UTF16ToUTF32(builder, utf32Builder).get();
             builder.setLength(0);
 
             this.listener = new DecompositionListener()
@@ -280,21 +281,17 @@ public class GermanCompoundSplitter
     /**
      * Convert a character sequence <code>s</code> into full unicode codepoints.
      */
-    private static IntsRef UTF16ToUTF32(CharSequence s, IntsRef scratchIntsRef)
+    private static IntsRefBuilder UTF16ToUTF32(CharSequence s, IntsRefBuilder builder)
     {
-        int charIdx = 0;
-        int intIdx = 0;
-        final int charLimit = s.length();
-        while (charIdx < charLimit)
+        builder.clear();
+
+        for (int charIdx = 0, charLimit = s.length(); charIdx < charLimit;)
         {
-            scratchIntsRef.grow(intIdx + 1);
             final int utf32 = Character.codePointAt(s, charIdx);
-            scratchIntsRef.ints[intIdx] = utf32;
+            builder.append(utf32);
             charIdx += Character.charCount(utf32);
-            intIdx++;
         }
-        scratchIntsRef.length = intIdx;
-        return scratchIntsRef;
+        return builder;
     }
 
     /**
@@ -337,12 +334,11 @@ public class GermanCompoundSplitter
         final Builder<Object> builder = new Builder<Object>(INPUT_TYPE.BYTE4,
             NoOutputs.getSingleton());
         final Object nothing = NoOutputs.getSingleton().getNoOutput();
-        IntsRefBuilder intsRef = new IntsRefBuilder();
+        IntsRefBuilder intsBuilder = new IntsRefBuilder();
         for (String morpheme : morphemes)
         {
-            intsRef.clear();
-            intsRef.copyUTF8Bytes(new BytesRef(morpheme.getBytes("UTF-8")));
-            builder.add(intsRef.get(), nothing);
+            UTF16ToUTF32(morpheme, intsBuilder);
+            builder.add(intsBuilder.get(), nothing);
         }
         return builder.finish();
     }
