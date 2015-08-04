@@ -120,14 +120,14 @@ public class GermanCompoundSplitter
     /**
      * Full unicode points representation of the input compound.
      */
-    private IntsRef utf32 = new IntsRef(0);
+    private IntsRef utf32;
     private IntsRefBuilder utf32Builder = new IntsRefBuilder();
 
     /**
      * This array stores the minimum number of decomposition words during traversals to
      * avoid splitting a larger word into smaller chunks.
      */
-    private IntsRef maxPaths = new IntsRef(0);
+    private IntsRefBuilder maxPathsBuilder = new IntsRefBuilder();
 
     /**
      * Reusable array of decomposition chunks.
@@ -190,8 +190,10 @@ public class GermanCompoundSplitter
                 }
             };
 
-            maxPaths.grow(utf32.length + 1);
-            Arrays.fill(maxPaths.ints, 0, utf32.length + 1, Integer.MAX_VALUE);
+            maxPathsBuilder.clear();
+            maxPathsBuilder.grow(utf32.length + 1);
+            Arrays.fill(maxPathsBuilder.ints(), 0, utf32.length + 1, Integer.MAX_VALUE);
+
             matchWord(utf32, utf32.offset);
 
             return builder.length() == 0 ? null : builder;
@@ -227,7 +229,7 @@ public class GermanCompoundSplitter
             }
         }
 
-        int [] maxPaths = this.maxPaths.ints;
+        int [] maxPaths = maxPathsBuilder.ints();
         for (int j = wordsFromHere.size(); --j >= 0;)
         {
             final Chunk ch = wordsFromHere.get(j);
